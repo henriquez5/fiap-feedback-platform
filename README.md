@@ -1,136 +1,146 @@
 # FIAP Feedback Platform — Tech Challenge Fase 4
 
-Plataforma serverless para receber avaliacoes de aulas, identificar feedbacks criticos, notificar administradores e gerar relatorios semanais. A solucao foi desenhada para atender aos requisitos de **Cloud Computing, Serverless, Deploy automatizado, monitoramento, seguranca e governanca**.
+Plataforma serverless em Java 21 para receber avaliações de aulas, identificar feedbacks críticos, notificar administradores e gerar relatórios semanais.
 
-## Visao rapida
+> **Vídeo de demonstração:** adicionar aqui o link final do vídeo.
 
-- **Cloud:** Microsoft Azure, modelo de nuvem publica.
-- **Computacao:** Azure Functions em plano Consumption (FaaS).
-- **Persistencia:** Azure Cosmos DB for NoSQL no modo serverless.
+## Visão rápida
+
+- **Cloud:** Microsoft Azure.
+- **Computação:** Azure Functions em plano **Flex Consumption (FC1)**.
+- **Runtime:** Java 21.
+- **Persistência:** Azure Cosmos DB for NoSQL no modo serverless.
 - **Mensageria:** Azure Queue Storage.
-- **Notificacoes:** Azure Communication Services Email.
+- **Notificações:** processamento assíncrono em modo `log`; integração com Azure Communication Services disponível por configuração.
 - **Monitoramento:** Application Insights + Log Analytics.
 - **Segredos:** Azure Key Vault.
-- **Infraestrutura como codigo:** Bicep.
-- **CI/CD:** GitHub Actions.
-- **Runtime:** Java 21.
+- **Infraestrutura como código:** Bicep.
+- **CI/CD:** GitHub Actions com autenticação OIDC.
+- **Regiões utilizadas:** Function App e recursos principais em `eastus`; Cosmos DB em `westus2`.
 
 ## Arquitetura
 
 ```mermaid
 flowchart LR
-    C[Cliente / Postman] -->|POST /api/avaliacao| F1[Function: receiveFeedback]
+    C[Cliente / Postman] -->|POST /api/avaliacao| F1[receiveFeedback]
     F1 -->|Documento JSON| DB[(Cosmos DB Serverless)]
-    F1 -->|Somente nota 0 a 3| Q[Azure Queue Storage]
-    T[Timer semanal] --> F2[Function: generateWeeklyReport]
-    DB -->|Consulta dos ultimos 7 dias| F2
-    F2 -->|Comando de e-mail| Q
-    Q --> F3[Function: dispatchEmailNotification]
-    F3 --> ACS[Azure Communication Services Email]
-    ACS --> A[Administrador]
+    F1 -->|Nota de 0 a 3| Q[Azure Queue Storage]
+
+    T[Timer semanal] --> F2[generateWeeklyReport]
+    DB -->|Consulta dos últimos 7 dias| F2
+    F2 -->|Mensagem de relatório| Q
+
+    Q --> F3[dispatchEmailNotification]
+    F3 --> LOG[LogOnlyEmailSender]
+    F3 -. opcional .-> ACS[Azure Communication Services Email]
+
     F1 -. telemetria .-> AI[Application Insights]
     F2 -. telemetria .-> AI
     F3 -. telemetria .-> AI
-    KV[Azure Key Vault] -->|segredos| F3
+
+    KV[Azure Key Vault] -. segredos para envio real .-> F3
 ```
 
-## Separacao de responsabilidades
+## Funções serverless
 
-| Funcao | Gatilho | Responsabilidade unica |
+| Função | Gatilho | Responsabilidade |
 |---|---|---|
-| `receiveFeedback` | HTTP POST | Validar, classificar e persistir o feedback; enfileirar um aviso quando for critico. |
-| `generateWeeklyReport` | Timer | Consultar os feedbacks dos ultimos sete dias, calcular os indicadores e enfileirar o relatorio. |
-| `dispatchEmailNotification` | Queue | Enviar qualquer notificacao de e-mail preparada pelas funcoes produtoras. |
+| `receiveFeedback` | HTTP POST | Validar, classificar e persistir o feedback; enfileirar notificação quando o feedback for crítico. |
+| `generateWeeklyReport` | Timer Trigger | Consultar os feedbacks, calcular média e totais e enfileirar o relatório semanal. |
+| `dispatchEmailNotification` | Queue Trigger | Consumir mensagens da fila e processar a notificação. |
 
-A fila desacopla o recebimento do feedback do envio do e-mail. Se o provedor de e-mail estiver indisponivel, o feedback permanece salvo e a mensagem e reprocessada pelo runtime. A configuracao `maxDequeueCount: 5` direciona falhas persistentes para a fila `email-notifications-poison`.
+A fila desacopla o recebimento do feedback do processamento da notificação. Falhas persistentes podem ser direcionadas para a fila `email-notifications-poison`.
 
-## Regra de urgencia
+## Regra de urgência
 
-O enunciado informa a nota de 0 a 10 e exige uma urgencia, mas nao define a conversao. A decisao de negocio documentada neste projeto e:
+O enunciado exige uma classificação de urgência, mas não define os intervalos. A decisão adotada foi:
 
-| Nota | Urgencia | Acao |
+| Nota | Urgência | Ação |
 |---|---|---|
-| 0 a 3 | `CRITICA` | Salva e dispara notificacao imediata. |
-| 4 a 6 | `ATENCAO` | Salva e aparece no relatorio semanal. |
-| 7 a 10 | `NORMAL` | Salva e aparece no relatorio semanal. |
+| 0 a 3 | `CRITICA` | Persiste e gera notificação imediata. |
+| 4 a 6 | `ATENCAO` | Persiste e aparece no relatório semanal. |
+| 7 a 10 | `NORMAL` | Persiste e aparece no relatório semanal. |
 
-## Endpoint
+## Endpoint publicado
 
 ### `POST /api/avaliacao`
 
-O endpoint usa `AuthorizationLevel.FUNCTION`. Em Azure, informe a function key no parametro `code` ou no cabecalho `x-functions-key`.
+```text
+https://fiapfeedback-func-ch2q6ymmfuwhe.azurewebsites.net/api/avaliacao
+```
+
+O endpoint usa `AuthorizationLevel.FUNCTION`. Em Azure, informe a Function Key pelo cabeçalho `x-functions-key` ou pelo parâmetro `code`.
+
+> A chave não deve ser publicada no repositório, no vídeo ou em imagens.
+
+### Requisição
 
 ```json
 {
-  "descricao": "A aula apresentou erros durante o laboratorio.",
+  "descricao": "O laboratório apresentou uma falha durante a aula.",
   "nota": 2
 }
 ```
 
-Resposta `201 Created`:
+### Resposta `201 Created`
 
 ```json
 {
   "id": "b0af1174-b33f-4e66-9df3-bbfcc813e98f",
-  "descricao": "A aula apresentou erros durante o laboratorio.",
+  "descricao": "O laboratório apresentou uma falha durante a aula.",
   "nota": 2,
   "urgencia": "CRITICA",
-  "dataEnvio": "2026-07-28T20:00:00Z"
+  "dataEnvio": "2026-07-29T22:00:00Z"
 }
 ```
 
-Validacoes:
+### Validações
 
-- `descricao` obrigatoria, nao vazia e limitada a 1.000 caracteres;
-- `nota` obrigatoria e entre 0 e 10;
-- JSON malformado retorna `400`;
-- todas as respostas incluem `X-Correlation-Id`.
+- `descricao` obrigatória e limitada a 1.000 caracteres;
+- `nota` obrigatória e entre 0 e 10;
+- JSON inválido retorna `400`;
+- respostas incluem `X-Correlation-Id`.
 
 ## Atendimento aos requisitos
 
-| Requisito do desafio | Implementacao |
+| Requisito | Implementação |
 |---|---|
-| Ambiente cloud | Todos os componentes executam no Microsoft Azure. |
-| Serverless obrigatorio | Tres Azure Functions, Cosmos DB serverless e plano Consumption. |
-| Minimo de duas funcoes | Tres funcoes com responsabilidades separadas. |
-| Banco de dados | Cosmos DB for NoSQL, container `feedbacks`, particao `/partitionKey`. |
-| Deploy automatizado | GitHub Actions e Bicep. |
-| Aplicacao monitorada | Application Insights, Log Analytics e logs estruturados. |
-| Notificacao critica | Avaliacoes de 0 a 3 geram mensagem na fila e e-mail imediato. |
-| Relatorio semanal | Timer configuravel, media, totais por dia, urgencia e detalhamento. |
-| Seguranca e governanca | HTTPS, TLS 1.2, Function Key, Key Vault, RBAC, tags, segredos fora do Git. |
-| Codigo documentado | README, documentos tecnicos, testes e Postman Collection. |
+| Ambiente cloud | Solução implantada no Microsoft Azure. |
+| Serverless | Três Azure Functions e Cosmos DB Serverless. |
+| Responsabilidade única | Funções separadas para entrada, relatório e notificação. |
+| Banco de dados | Cosmos DB for NoSQL, database `feedbackdb`, container `feedbacks`. |
+| Mensageria | Azure Queue Storage, fila `email-notifications`. |
+| Deploy automatizado | GitHub Actions + Bicep + OIDC. |
+| Monitoramento | Application Insights, Log Analytics e logs estruturados. |
+| Notificação crítica | Notas de 0 a 3 publicam mensagem na fila. |
+| Relatório semanal | Timer configurável, média e totais por dia e urgência. |
+| Segurança | HTTPS, TLS 1.2, Function Key, Key Vault, RBAC e secrets fora do Git. |
 
-## Executar os testes
+## Testes
 
-Requisitos: JDK 21 e Maven 3.9+.
+Pré-requisitos:
+
+- JDK 21;
+- Maven 3.9+.
 
 ```bash
 mvn clean verify
 ```
 
-Relatorio de cobertura:
+Relatório de cobertura:
 
 ```text
 target/site/jacoco/index.html
 ```
 
-## Executar localmente
+## Execução local
 
-Requisitos adicionais:
+Pré-requisitos adicionais:
 
 - Azure Functions Core Tools v4;
-- Azurite para a fila local;
-- um Cosmos DB de desenvolvimento ou o emulador compativel;
-- `EMAIL_PROVIDER=log` para simular o envio sem custo.
-
-```bash
-cp local.settings.example.json local.settings.json
-mvn clean package
-mvn azure-functions:run
-```
-
-No Windows PowerShell:
+- Azurite;
+- Azure Cosmos DB Emulator;
+- `EMAIL_PROVIDER=log`.
 
 ```powershell
 Copy-Item local.settings.example.json local.settings.json
@@ -140,113 +150,78 @@ mvn azure-functions:run
 
 Chamada local:
 
-```bash
-curl -X POST "http://localhost:7071/api/avaliacao" \
-  -H "Content-Type: application/json" \
-  -H "X-Correlation-Id: demo-001" \
-  -d '{"descricao":"Aula muito boa","nota":9}'
+```powershell
+$body = @{
+    descricao = "A aula foi clara e objetiva"
+    nota = 9
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://localhost:7071/api/avaliacao" `
+    -ContentType "application/json" `
+    -Body $body
 ```
 
-## Deploy da infraestrutura
+## Deploy automatizado
 
-```bash
-az login
-az group create --name rg-fiapfeedback --location brazilsouth
-az deployment group create \
-  --resource-group rg-fiapfeedback \
-  --template-file infra/main.bicep \
-  --parameters @infra/main.parameters.json
+O workflow **Deploy Azure**:
+
+1. autentica no Azure por OIDC;
+2. cria o Resource Group;
+3. executa o Bicep;
+4. cria Storage, fila, Cosmos DB, Function App, Application Insights, Log Analytics e Key Vault;
+5. compila o projeto;
+6. publica as Azure Functions;
+7. imprime o endpoint.
+
+Secrets configurados no ambiente `production` do GitHub:
+
+```text
+AZURE_CLIENT_ID
+AZURE_TENANT_ID
+AZURE_SUBSCRIPTION_ID
 ```
 
-Consulte os outputs:
+Não existe `AZURE_CLIENT_SECRET`, pois a autenticação usa OIDC.
 
-```bash
-az deployment group show \
-  --resource-group rg-fiapfeedback \
-  --name main \
-  --query properties.outputs
-```
+## Relatório semanal
 
-## Configurar e-mail real
-
-O Bicep deixa `EMAIL_PROVIDER=log` inicialmente para permitir o deploy sem depender da configuracao manual de dominio. Depois de criar um recurso **Azure Communication Services**, um **Email Communication Services**, provisionar/conectar um dominio e obter o remetente validado:
-
-```bash
-az keyvault secret set \
-  --vault-name <KEY_VAULT_NAME> \
-  --name acs-email-connection-string \
-  --value '<CONNECTION_STRING>'
-
-az keyvault secret set \
-  --vault-name <KEY_VAULT_NAME> \
-  --name admin-email \
-  --value 'administrador@exemplo.com'
-
-az functionapp config appsettings set \
-  --resource-group rg-fiapfeedback \
-  --name <FUNCTION_APP_NAME> \
-  --settings EMAIL_PROVIDER=azure ACS_EMAIL_SENDER='DoNotReply@dominio-validado.azurecomm.net'
-```
-
-Reinicie a Function App depois de cadastrar os segredos:
-
-```bash
-az functionapp restart --resource-group rg-fiapfeedback --name <FUNCTION_APP_NAME>
-```
-
-## Deploy do codigo
-
-Manual:
-
-```bash
-mvn -DfunctionAppName=<FUNCTION_APP_NAME> clean package
-mvn -DfunctionAppName=<FUNCTION_APP_NAME> azure-functions:deploy
-```
-
-Automatizado: configure OIDC no GitHub e os secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` e `AZURE_SUBSCRIPTION_ID`; em seguida, execute o workflow **Deploy Azure**.
-
-## Relatorio semanal
-
-Padrao de producao:
+Configuração final:
 
 ```text
 0 0 11 * * 1
 ```
 
-Isso executa toda segunda-feira as 11:00 UTC, equivalente a 08:00 no horario de Brasilia sem horario de verao.
+Execução: segunda-feira às 11:00 UTC, equivalente a 08:00 no horário de Brasília.
 
-Para o video, altere temporariamente para executar a cada dois minutos:
+Para demonstração, o valor pode ser alterado temporariamente para:
 
 ```text
 0 */2 * * * *
 ```
 
-Depois da demonstracao, restaure a agenda semanal.
+Após o teste, o cron semanal deve ser restaurado.
 
 ## Monitoramento
 
-Consultas KQL sugeridas no Application Insights:
+Exemplo de consulta KQL para rastrear os fluxos:
 
 ```kusto
 traces
-| where message contains "event=feedback.created"
+| where timestamp > ago(2h)
+| where message has_any (
+    "feedback.created",
+    "generateWeeklyReport",
+    "weekly_report.generated",
+    "dispatchEmailNotification",
+    "email.sent"
+)
+| project timestamp, message, severityLevel, operation_Id
 | order by timestamp desc
 ```
 
-```kusto
-traces
-| where message contains "event=email.failed"
-   or message contains "event=weekly_report.failed"
-| order by timestamp desc
-```
-
-```kusto
-requests
-| summarize total=count(), failures=countif(success == false), avgDuration=avg(duration) by name
-| order by total desc
-```
-
-A documentacao completa esta em [`docs/monitoramento.md`](docs/monitoramento.md).
+O `operation_Id` permite correlacionar etapas pertencentes à mesma execução.
 
 ## Postman
 
@@ -256,10 +231,10 @@ Importe:
 postman/fiap-feedback.postman_collection.json
 ```
 
-Defina as variaveis:
+Configure:
 
-- `baseUrl`: URL da Function App;
-- `functionKey`: chave da funcao em Azure.
+- `baseUrl`: URL pública da Function App;
+- `functionKey`: Function Key obtida no Azure Portal.
 
 ## Estrutura
 
@@ -277,21 +252,22 @@ Defina as variaveis:
 └── .github/workflows
 ```
 
-## Material da entrega
+## Documentação complementar
 
-- [Arquitetura e decisoes](docs/arquitetura.md)
-- [Deploy detalhado](docs/deploy.md)
-- [Seguranca e governanca](docs/seguranca.md)
-- [Monitoramento](docs/monitoramento.md)
-- [Documentacao das funcoes](docs/funcoes-serverless.md)
-- [Roteiro do video](docs/roteiro-video.md)
-- [Checklist de evidencias](docs/evidencias/README.md)
-- [Checklist orientado pela rubrica](docs/checklist-avaliacao.md)
+- [`docs/arquitetura.md`](docs/arquitetura.md)
+- [`docs/deploy.md`](docs/deploy.md)
+- [`docs/seguranca.md`](docs/seguranca.md)
+- [`docs/monitoramento.md`](docs/monitoramento.md)
+- [`docs/funcoes-serverless.md`](docs/funcoes-serverless.md)
+- [`docs/roteiro-video.md`](docs/roteiro-video.md)
+- [`docs/checklist-avaliacao.md`](docs/checklist-avaliacao.md)
 
 ## Limpeza dos recursos
 
-Para evitar consumo de creditos:
+Depois da gravação e da avaliação, exclua o Resource Group para evitar consumo de créditos:
 
 ```bash
 az group delete --name rg-fiapfeedback --yes --no-wait
 ```
+
+No Azure Portal, também é possível excluir diretamente o grupo `rg-fiapfeedback`.
