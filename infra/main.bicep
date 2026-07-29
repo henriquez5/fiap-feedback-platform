@@ -33,6 +33,7 @@ var keyVaultName = toLower(take('${appNamePrefix}-kv-${suffix}', 24))
 var databaseName = 'feedbackdb'
 var containerName = 'feedbacks'
 var queueName = 'email-notifications'
+var deploymentStorageContainerName = 'app-package-${take(suffix, 13)}'
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageName
@@ -64,6 +65,20 @@ resource queueService 'Microsoft.Storage/storageAccounts/queueServices@2023-05-0
 resource notificationQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' = {
   parent: queueService
   name: queueName
+}
+
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: storage
+  name: 'default'
+}
+
+resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: deploymentStorageContainerName
+
+  properties: {
+    publicAccess: 'None'
+  }
 }
 
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
@@ -195,20 +210,20 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
+resource plan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: planName
   location: location
-  kind: 'linux'
+  kind: 'functionapp'
+
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
-    size: 'Y1'
-    family: 'Y'
-    capacity: 0
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
+
   properties: {
     reserved: true
   }
+
   tags: {
     project: 'fiap-tech-challenge-fase-4'
     environment: 'academic'
@@ -224,28 +239,12 @@ var appSettings = union([
     value: '~4'
   }
   {
-    name: 'FUNCTIONS_WORKER_RUNTIME'
-    value: 'java'
-  }
-  {
     name: 'JAVA_OPTS'
     value: '-Djava.net.preferIPv4Stack=true'
   }
   {
     name: 'AzureWebJobsStorage'
     value: storageConnectionString
-  }
-  {
-    name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-    value: storageConnectionString
-  }
-  {
-    name: 'WEBSITE_CONTENTSHARE'
-    value: toLower(take('${functionAppName}content', 63))
-  }
-  {
-    name: 'WEBSITE_RUN_FROM_PACKAGE'
-    value: '1'
   }
   {
     name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -294,25 +293,24 @@ var appSettings = union([
   }
 ])
 
-resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
+resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
   kind: 'functionapp,linux'
+
   identity: {
     type: 'SystemAssigned'
   }
+
   properties: {
     serverFarmId: plan.id
     httpsOnly: true
     publicNetworkAccess: 'Enabled'
+
     siteConfig: {
-      linuxFxVersion: 'Java|21'
-      alwaysOn: false
-      ftpsState: 'Disabled'
       minTlsVersion: '1.2'
-      http20Enabled: true
-      use32BitWorkerProcess: false
       appSettings: appSettings
+
       cors: empty(allowedCorsOrigin) ? null : {
         allowedOrigins: [
           allowedCorsOrigin
@@ -320,7 +318,32 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         supportCredentials: false
       }
     }
+
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${storage.properties.primaryEndpoints.blob}${deploymentStorageContainerName}'
+
+          authentication: {
+            type: 'StorageAccountConnectionString'
+            storageAccountConnectionStringName: 'AzureWebJobsStorage'
+          }
+        }
+      }
+
+      scaleAndConcurrency: {
+        maximumInstanceCount: 40
+        instanceMemoryMB: 2048
+      }
+
+      runtime: {
+        name: 'java'
+        version: '21'
+      }
+    }
   }
+
   tags: {
     project: 'fiap-tech-challenge-fase-4'
     environment: 'academic'
