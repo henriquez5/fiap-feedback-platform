@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "appNamePrefix": {
+      "value": "fiapfeedback"
+    },
+    "emailProvider": {
+      "value": "log"
+    },
+    "weeklyReportCron": {
+      "value": "0 0 11 * * 1"
+    },
+    "acsEmailSender": {
+      "value": "DoNotReply@configure-seu-dominio.azurecomm.net"
+    }
+  }
+}

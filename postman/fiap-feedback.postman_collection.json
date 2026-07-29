@@ -1,0 +1,250 @@
+{
+  "info": {
+    "_postman_id": "93f1a454-f6a2-4c4e-92d4-0e7c58a5d1a0",
+    "name": "FIAP Feedback Platform",
+    "description": "Collection do Tech Challenge Fase 4. Configure baseUrl e functionKey.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:7071"
+    },
+    {
+      "key": "functionKey",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Feedback normal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-functions-key",
+            "value": "{{functionKey}}",
+            "disabled": false
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"descricao\": \"A aula foi clara e objetiva.\",\n  \"nota\": 9\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/avaliacao",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "avaliacao"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+              "pm.test('Correlation ID presente', function () { pm.expect(pm.response.headers.get('X-Correlation-Id')).to.not.be.null; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Feedback de atencao",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-functions-key",
+            "value": "{{functionKey}}",
+            "disabled": false
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"descricao\": \"A explicacao precisa de mais exemplos praticos.\",\n  \"nota\": 5\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/avaliacao",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "avaliacao"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+              "pm.test('Correlation ID presente', function () { pm.expect(pm.response.headers.get('X-Correlation-Id')).to.not.be.null; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Feedback critico",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-functions-key",
+            "value": "{{functionKey}}",
+            "disabled": false
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"descricao\": \"O laboratorio falhou e impediu a conclusao da aula.\",\n  \"nota\": 2\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/avaliacao",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "avaliacao"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+              "pm.test('Correlation ID presente', function () { pm.expect(pm.response.headers.get('X-Correlation-Id')).to.not.be.null; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Nota invalida",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-functions-key",
+            "value": "{{functionKey}}",
+            "disabled": false
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"descricao\": \"Teste de validacao.\",\n  \"nota\": 11\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/avaliacao",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "avaliacao"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 400', function () { pm.response.to.have.status(400); });",
+              "pm.test('Correlation ID presente', function () { pm.expect(pm.response.headers.get('X-Correlation-Id')).to.not.be.null; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Descricao vazia",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-functions-key",
+            "value": "{{functionKey}}",
+            "disabled": false
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"descricao\": \"\",\n  \"nota\": 7\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/avaliacao",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "avaliacao"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 400', function () { pm.response.to.have.status(400); });",
+              "pm.test('Correlation ID presente', function () { pm.expect(pm.response.headers.get('X-Correlation-Id')).to.not.be.null; });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

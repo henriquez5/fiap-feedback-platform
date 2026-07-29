@@ -1,0 +1,72 @@
+name: Deploy Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      location:
+        description: Azure region
+        required: true
+        default: brazilsouth
+      appNamePrefix:
+        description: Prefixo dos recursos
+        required: true
+        default: fiapfeedback
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  RESOURCE_GROUP: rg-${{ inputs.appNamePrefix }}
+  LOCATION: ${{ inputs.location }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Azure login with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create resource group
+        run: az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
+
+      - name: Deploy infrastructure
+        id: infra
+        shell: bash
+        run: |
+          FUNCTION_APP_NAME=$(az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters appNamePrefix='${{ inputs.appNamePrefix }}' location="$LOCATION" \
+            --query properties.outputs.functionAppName.value \
+            --output tsv)
+          echo "function_app_name=$FUNCTION_APP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Build Azure Functions package
+        run: mvn -B -DfunctionAppName='${{ steps.infra.outputs.function_app_name }}' clean package
+
+      - name: Deploy application
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ steps.infra.outputs.function_app_name }}
+          package: target/azure-functions/${{ steps.infra.outputs.function_app_name }}
+
+      - name: Print endpoint
+        run: |
+          echo "Endpoint: https://${{ steps.infra.outputs.function_app_name }}.azurewebsites.net/api/avaliacao"
