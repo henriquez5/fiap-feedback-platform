@@ -6,6 +6,9 @@ param appNamePrefix string = 'fiapfeedback'
 @description('Regiao principal dos recursos.')
 param location string = resourceGroup().location
 
+@description('Regiao usada exclusivamente pelo Azure Cosmos DB.')
+param cosmosLocation string = 'westus2'
+
 @description('Origem permitida no CORS. Para testes com Postman, mantenha vazio.')
 param allowedCorsOrigin string = ''
 
@@ -83,7 +86,7 @@ resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/con
 
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
   name: cosmosName
-  location: location
+  location: cosmosLocation
   kind: 'GlobalDocumentDB'
   properties: {
     databaseAccountOfferType: 'Standard'
@@ -92,7 +95,7 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     }
     locations: [
       {
-        locationName: location
+        locationName: cosmosLocation
         failoverPriority: 0
         isZoneRedundant: false
       }
