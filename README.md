@@ -259,7 +259,6 @@ Configure:
 - [`docs/seguranca.md`](docs/seguranca.md)
 - [`docs/monitoramento.md`](docs/monitoramento.md)
 - [`docs/funcoes-serverless.md`](docs/funcoes-serverless.md)
-- [`docs/roteiro-video.md`](docs/roteiro-video.md)
 - [`docs/checklist-avaliacao.md`](docs/checklist-avaliacao.md)
 
 ## Limpeza dos recursos
